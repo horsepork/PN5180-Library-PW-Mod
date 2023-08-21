@@ -86,7 +86,7 @@ void printBuffer(uint8_t *buffer, uint8_t len){
 	}
 	Serial.println();
 } 
-#define hackyReadDebug Serial.print
+#define hackyReadDebug //Serial.print
 #define hackyReadTimingDebug //Serial.print
 uint32_t printTime(const char* object, uint32_t time){
 	hackyReadTimingDebug(object);
@@ -97,6 +97,12 @@ uint32_t printTime(const char* object, uint32_t time){
 }
 
 uint8_t *PN5180ISO14443::getTagData(){
+	// Serial.print("From within 14443: ");
+	// for(int i = 0; i < 4; i++){
+	// 	Serial.print(tagData[i]);
+	// 	Serial.print(" ");
+	// }
+	// Serial.println();
 	return tagData;
 }
 
@@ -104,7 +110,12 @@ int8_t PN5180ISO14443::hackyRead(){
 	return hackyRead(rawTagData);
 }
 
-void PN5180ISO14443::update(){
+bool PN5180ISO14443::update(){ // return true if updated
+	bool updated = false;
+	uint8_t prevTagData[4];
+	for(int i = 0; i < 4; i++){
+		prevTagData[i] = tagData[i];
+	}
 	int8_t readState = hackyRead();
 	if(readState == 1){
 		for(int i = 0; i < 4; i++){
@@ -125,6 +136,13 @@ void PN5180ISO14443::update(){
 		errorCounter++;
 	}
 	setRF_off();
+	for(int i = 0; i < 4; i++){
+		if(tagData[i] != prevTagData[i]){
+			updated = true;
+			break;
+		}
+	}
+	return updated;
 }
 
 int8_t PN5180ISO14443::hackyRead(uint8_t *buffer){
@@ -135,8 +153,7 @@ int8_t PN5180ISO14443::hackyRead(uint8_t *buffer){
 	uint8_t cmd[7];
 	uint8_t uidLength = 0;
 	uint32_t timer = millis();
-
-	// reset(); // look into possible universal reset (that is just slightly longer...?) Would save maybe 3 or 4 ms per reader per read cycle
+	reset();
 	if(!setRF_on()){
 		errorCounter++;
 		return -1;

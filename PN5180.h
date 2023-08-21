@@ -94,6 +94,7 @@ public:
   void end();
   void digitalWrite_alt(uint8_t pin, bool state);
   bool digitalRead_alt(uint8_t pin);
+  void showIRQStatus(uint32_t irqStatus);
   uint32_t timeCounter;
   uint16_t errorCounter = 0;
 
