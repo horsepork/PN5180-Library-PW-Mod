@@ -74,7 +74,6 @@ void PN5180::begin() {
     // mcp->pinMode(PN5180_RST, OUTPUT);
   }
   else{
-    Serial.println("not i2c mode");
     pinMode(PN5180_NSS, OUTPUT);
     pinMode(PN5180_BUSY, INPUT);
     pinMode(PN5180_RST, OUTPUT);
