@@ -113,7 +113,7 @@ int8_t PN5180ISO14443::hackyRead(){
 bool PN5180ISO14443::update(){ // return true if updated
 	bool updated = false;
 	static uint8_t tagRemovedCounter = 0;
-	const uint8_t timesBeforeTagRemoved = 2;
+	const uint8_t timesBeforeTagRemoved = 3;
 	uint8_t prevTagData[4] = {0, 0, 0, 0};
 	for(int i = 0; i < 4; i++){
 		prevTagData[i] = tagData[i];
