@@ -179,7 +179,7 @@ bool PN5180ISO14443::update(){ // return true if updated
 }
 
 int8_t PN5180ISO14443::hackyRead(uint8_t *buffer){
-	for(int i = 0; i < 8; i++){
+	for(int i = 0; i < 4; i++){
 		buffer[i] = 0;
 	}
 
