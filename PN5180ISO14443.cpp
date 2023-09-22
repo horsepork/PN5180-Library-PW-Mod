@@ -137,6 +137,7 @@ bool PN5180ISO14443::update(){ // return true if updated
 	}
 	else if(readState == 0){
 		tagRemovedCounter++;
+		Serial.println(tagRemovedCounter);
 		if(tagRemovedCounter > timesBeforeTagRemoved){
 			for(int i = 0; i < 4; i++){
 				tagData[i] = 0;
