@@ -123,9 +123,9 @@ bool PN5180ISO14443::update(){ // return true if updated
 		}
 	}
 	else if(readState == -12){ // -12 is returned when cards overlap (generally, I think?)
-		for(int i = 0; i < 4; i++){
-			tagData[i] = 255;
-		}
+		// for(int i = 0; i < 4; i++){
+		// 	tagData[i] = 255;
+		// }
 	}
 	else if(readState == 0){
 		for(int i = 0; i < 4; i++){
