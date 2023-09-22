@@ -120,13 +120,9 @@ bool PN5180ISO14443::update(){ // return true if updated
 	}
 	int8_t readState = hackyRead();
 	if(readState == 1){
-		Serial.print("successful read? ");
 		for(int i = 0; i < 4; i++){
 			tagData[i] = rawTagData[i];
-			Serial.print(tagData[i]);
-			Serial.print(" ");
 		}
-		Serial.println();
 		tagRemovedCounter = 0;
 	}
 	else if(readState == -12){ // -12 is returned when cards overlap (generally, I think?)
@@ -137,6 +133,7 @@ bool PN5180ISO14443::update(){ // return true if updated
 	else if(readState == 0){
 		tagRemovedCounter++;
 		if(tagRemovedCounter > timesBeforeTagRemoved){
+			Serial.println("tag removed");
 			for(int i = 0; i < 4; i++){
 				tagData[i] = 0;
 			}
