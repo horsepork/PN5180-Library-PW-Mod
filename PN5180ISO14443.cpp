@@ -112,19 +112,21 @@ int8_t PN5180ISO14443::hackyRead(){
 
 bool PN5180ISO14443::update(){ // return true if updated
 	bool updated = false;
-	static uint8_t lastValidTag[4];
 	static uint8_t tagRemovedCounter = 0;
-	const uint8_t timesBeforeTagRemoved = 50;
+	const uint8_t timesBeforeTagRemoved = 3;
 	uint8_t prevTagData[4];
 	for(int i = 0; i < 4; i++){
 		prevTagData[i] = tagData[i];
 	}
 	int8_t readState = hackyRead();
 	if(readState == 1){
+		Serial.print("successful read? ");
 		for(int i = 0; i < 4; i++){
 			tagData[i] = rawTagData[i];
-			lastValidTag[i] = rawTagData[i];
+			Serial.print(tagData[i]);
+			Serial.print(" ");
 		}
+		Serial.println();
 		if(tagData[0] == 0){
 			Serial.println("0 showing up as valid read?");
 		}
@@ -140,7 +142,6 @@ bool PN5180ISO14443::update(){ // return true if updated
 		Serial.print("Tag removed counter -- ");
 		Serial.println(tagRemovedCounter);
 		if(tagRemovedCounter > timesBeforeTagRemoved){
-			Serial.println("so...");
 			for(int i = 0; i < 4; i++){
 				tagData[i] = 0;
 			}
@@ -148,8 +149,6 @@ bool PN5180ISO14443::update(){ // return true if updated
 	}
 	else{
 		errorCounter++;
-		Serial.print("error counter: ");
-		Serial.println(errorCounter);
 	}
 	setRF_off();
 	for(int i = 0; i < 4; i++){
