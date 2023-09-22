@@ -133,7 +133,6 @@ bool PN5180ISO14443::update(){ // return true if updated
 	else if(readState == 0){
 		tagRemovedCounter++;
 		if(tagRemovedCounter > timesBeforeTagRemoved){
-			Serial.println("tag removed");
 			for(int i = 0; i < 4; i++){
 				tagData[i] = 0;
 			}
@@ -145,10 +144,27 @@ bool PN5180ISO14443::update(){ // return true if updated
 	setRF_off();
 	for(int i = 0; i < 4; i++){
 		if(tagData[i] != prevTagData[i]){
+			
 			updated = true;
 			break;
 		}
 	}
+
+	if(updated){
+		Serial.print("prev tag data --");
+		for(int i = 0; i < 4; i++){
+			Serial.print(" ");
+			Serial.print(prevTagData[i]);
+		}
+		Serial.println();
+		Serial.print("new tag data --");
+		for(int i = 0; i < 4; i++){
+			Serial.print(" ");
+			Serial.print(tagData[i]);
+		}
+		Serial.println();
+	}
+	
 	return updated;
 }
 
