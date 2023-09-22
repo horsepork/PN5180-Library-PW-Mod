@@ -125,6 +125,9 @@ bool PN5180ISO14443::update(){ // return true if updated
 			tagData[i] = rawTagData[i];
 			lastValidTag[i] = rawTagData[i];
 		}
+		if(tagData[0] == 0){
+			Serial.println("0 showing up as valid read?");
+		}
 		tagRemovedCounter = 0;
 	}
 	else if(readState == -12){ // -12 is returned when cards overlap (generally, I think?)
