@@ -147,6 +147,8 @@ bool PN5180ISO14443::update(){ // return true if updated
 	}
 	else{
 		errorCounter++;
+		Serial.print("error counter: ");
+		Serial.println(errorCounter);
 	}
 	setRF_off();
 	for(int i = 0; i < 4; i++){
