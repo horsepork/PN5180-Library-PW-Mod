@@ -113,22 +113,15 @@ int8_t PN5180ISO14443::hackyRead(){
 bool PN5180ISO14443::update(){ // return true if updated
 	bool updated = false;
 	static uint8_t tagRemovedCounter = 0;
-	const uint8_t timesBeforeTagRemoved = 100;
+	const uint8_t timesBeforeTagRemoved = 2;
 	uint8_t prevTagData[4] = {0, 0, 0, 0};
 	for(int i = 0; i < 4; i++){
 		prevTagData[i] = tagData[i];
 	}
 	int8_t readState = hackyRead();
 	if(readState == 1){
-		bool weird = false;
 		for(int i = 0; i < 4; i++){
 			tagData[i] = rawTagData[i];
-			if(tagData[i] == 0){
-				weird = true;
-			}
-		}
-		if(weird){
-			Serial.println("weird...");
 		}
 		tagRemovedCounter = 0;
 	}
@@ -141,7 +134,6 @@ bool PN5180ISO14443::update(){ // return true if updated
 		tagRemovedCounter++;
 		if(tagRemovedCounter > timesBeforeTagRemoved){
 			tagRemovedCounter = 0;
-			Serial.println("zeroed here");
 			for(int i = 0; i < 4; i++){
 				tagData[i] = 0;
 			}
@@ -157,22 +149,6 @@ bool PN5180ISO14443::update(){ // return true if updated
 			updated = true;
 			break;
 		}
-	}
-
-	if(updated){
-		Serial.print("prev tag data --");
-		for(int i = 0; i < 4; i++){
-			Serial.print(" ");
-			Serial.print(prevTagData[i]);
-		}
-		Serial.println();
-		Serial.print("new tag data --");
-		for(int i = 0; i < 4; i++){
-			Serial.print(" ");
-			Serial.print(tagData[i]);
-		}
-		Serial.println();
-		Serial.println();
 	}
 	
 	return updated;
