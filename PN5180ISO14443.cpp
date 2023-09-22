@@ -120,8 +120,15 @@ bool PN5180ISO14443::update(){ // return true if updated
 	}
 	int8_t readState = hackyRead();
 	if(readState == 1){
+		bool weird = false;
 		for(int i = 0; i < 4; i++){
 			tagData[i] = rawTagData[i];
+			if(tagData[i] == 0){
+				weird = true;
+			}
+		}
+		if(weird){
+			Serial.println("weird...");
 		}
 		tagRemovedCounter = 0;
 	}
@@ -164,6 +171,7 @@ bool PN5180ISO14443::update(){ // return true if updated
 			Serial.print(" ");
 			Serial.print(tagData[i]);
 		}
+		Serial.println();
 		Serial.println();
 	}
 	
