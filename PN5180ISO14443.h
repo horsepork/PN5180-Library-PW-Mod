@@ -35,7 +35,7 @@ public:
 private:
   uint16_t rxBytesReceived();
   uint32_t GetNumberOfBytesReceivedAndValidBits();
-  uint8_t tagData[7];
+  uint8_t tagData[7] = {0, 0, 0, 0, 0, 0, 0};
   uint8_t lastTagLength = 4;
 public:
   // Mifare TypeA
