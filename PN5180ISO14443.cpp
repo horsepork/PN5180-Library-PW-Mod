@@ -22,13 +22,68 @@
 #include "PN5180ISO14443.h"
 #include <PN5180.h>
 #include "Debug.h"
+#include "LibPrintf.h"
+
+
 
 PN5180ISO14443::PN5180ISO14443(uint8_t SSpin, uint8_t BUSYpin, uint8_t RSTpin, SPIClass& spi) 
               : PN5180(SSpin, BUSYpin, RSTpin, spi) {
 }
 
-PN5180ISO14443::PN5180ISO14443(uint8_t _nss, Adafruit_MCP23X08 *_mcp, uint8_t _address, SPIClass& _spi) 
-              : PN5180(_nss, _mcp, _address, _spi) {
+PN5180ISO14443::PN5180ISO14443(uint8_t _nss, Adafruit_MCP23X08 *_mcp, SPIClass &_spi)
+				: PN5180(_nss, _mcp, _spi){
+}
+
+bool PN5180ISO14443::errored(){
+	if(hadError){
+		hadError = false;
+		return true;
+	}
+	return false;
+}
+
+ISO14443_UPDATE_STATE PN5180ISO14443::update(){ // return true if updated
+	ISO14443_UPDATE_STATE newState = ISO14443_NOT_UPDATED;
+	uint8_t prevTagData[7];
+	for(int i = 0; i < 7; i++){
+		prevTagData[i] = tagData[i];
+	}
+	// setupRF();
+	int uidLength = readCardSerial(tagData);
+	// printf("UID length -- %i\n", uidLength);
+	if(uidLength != 4 && uidLength != 7 && uidLength != -10 && uidLength != 0){
+		printf("reader %i uid length -- %i\n", readerID, uidLength);
+		newState = ISO14443_ERROR;	
+		hadError = true;
+		return newState;
+	}
+	setRF_off();
+	if(uidLength != 4 && uidLength != 7){
+		for(int i = 0; i < 7; i++){
+			tagData[i] = 0;
+		}
+		uidLength = 0;
+	}
+	else{
+		lastTagLength = uidLength;
+	}
+	for(int i = 0; i < 7; i++){
+		if(tagData[i] != prevTagData[i]){
+			newState = ISO14443_UPDATED;
+			break;
+		}
+	}
+	return newState;
+}
+
+void PN5180ISO14443::printUID(){
+	printf("RFID %i tag data -- ", readerID);
+	for(int i = 0; i < lastTagLength; i++){
+		if(tagData[i] < 0x10) Serial.print("0");
+		Serial.print(tagData[i], HEX);
+		Serial.print(" ");
+	}
+	Serial.println();
 }
 
 bool PN5180ISO14443::setupRF() {
@@ -47,15 +102,14 @@ bool PN5180ISO14443::setupRF() {
   return true;
 }
 
-
-
 uint16_t PN5180ISO14443::rxBytesReceived() {
 	uint32_t rxStatus;
 	uint16_t len = 0;
-	readRegister(RX_STATUS, &rxStatus);
+	bool success = readRegister(RX_STATUS, &rxStatus);
+	// printf("rxBytesReceived success -- %i\n", success);
 	// Lower 9 bits has length
-	
 	len = (uint16_t)(rxStatus & 0x000001ff);
+	// printf("len -- %i\n", len);
 	return len;
 }
 
@@ -77,230 +131,74 @@ uint16_t PN5180ISO14443::rxBytesReceived() {
 * -	double Size UID (7 byte)
 * -	triple Size UID (10 byte) - not yet supported
 */
-
-void printBuffer(uint8_t *buffer, uint8_t len){
+uint32_t timer;
+void printTime(const char* str){
 	return;
-	for(int i = 0; i < len; i++){
-		Serial.print(buffer[i]);
-		Serial.print(" ");
-	}
-	Serial.println();
-} 
-#define hackyReadDebug //Serial.print
-#define hackyReadTimingDebug //Serial.print
-uint32_t printTime(const char* object, uint32_t time){
-	hackyReadTimingDebug(object);
-	hackyReadTimingDebug(" time -- ");
-	hackyReadTimingDebug(millis() - time);
-	hackyReadTimingDebug('\n');
-	return millis();
+	printf("%s time -- %li\n", str, millis() - timer);
+	timer = millis();
 }
-
-uint8_t *PN5180ISO14443::getTagData(){
-	// Serial.print("From within 14443: ");
-	// for(int i = 0; i < 4; i++){
-	// 	Serial.print(tagData[i]);
-	// 	Serial.print(" ");
-	// }
-	// Serial.println();
-	return tagData;
-}
-
-int8_t PN5180ISO14443::hackyRead(){
-	return hackyRead(rawTagData);
-}
-
-bool PN5180ISO14443::update(){ // return true if updated
-	bool updated = false;
-	static uint8_t tagRemovedCounter = 0;
-	const uint8_t timesBeforeTagRemoved = 3;
-	uint8_t prevTagData[4] = {0, 0, 0, 0};
-	for(int i = 0; i < 4; i++){
-		prevTagData[i] = tagData[i];
-	}
-	int8_t readState = hackyRead();
-	if(readState == 1){
-		for(int i = 0; i < 4; i++){
-			tagData[i] = rawTagData[i];
-		}
-		tagRemovedCounter = 0;
-	}
-	else if(readState == -12){ // -12 is returned when cards overlap (generally, I think?)
-		// for(int i = 0; i < 4; i++){
-		// 	tagData[i] = 255;
-		// }
-	}
-	else if(readState == 0){
-		tagRemovedCounter++;
-		if(tagRemovedCounter > timesBeforeTagRemoved){
-			tagRemovedCounter = 0;
-			for(int i = 0; i < 4; i++){
-				tagData[i] = 0;
-			}
-		}
-	}
-	else{
-		errorCounter++;
-	}
-	setRF_off();
-	for(int i = 0; i < 4; i++){
-		if(tagData[i] != prevTagData[i]){
-			
-			updated = true;
-			break;
-		}
-	}
-	
-	return updated;
-}
-
-int8_t PN5180ISO14443::hackyRead(uint8_t *buffer){
-	for(int i = 0; i < 4; i++){
-		buffer[i] = 0;
-	}
-
-	uint8_t cmd[7];
-	uint8_t uidLength = 0;
-	uint32_t timer = millis();
-	reset();
-	if(!setRF_on()){
-		errorCounter++;
-		return -1;
-	}
-	
-	if (!loadRFConfig(0x0, 0x80)) {
-		errorCounter++;
-		return -2;
-	}
-	
-	// clear RX CRC
-	if (!writeRegisterWithAndMask(CRC_RX_CONFIG, 0xFFFFFFFE)) {
-		hackyReadDebug(F("*** ERROR: Clear RX CRC failed!\n"));
-		errorCounter++;
-		return -3;
-	}
-	timer = printTime("rx crc", timer);
-	// clear TX CRC
-	if (!writeRegisterWithAndMask(CRC_TX_CONFIG, 0xFFFFFFFE)) {
-		hackyReadDebug(F("*** ERROR: Clear TX CRC failed!\n"));
-		errorCounter++;
-		return -4;
-	}
-	timer = printTime("tx crc", timer);
-	  // activate TRANSCEIVE routine  
-	if (!writeRegisterWithOrMask(SYSTEM_CONFIG, 0x00000003)) {
-		hackyReadDebug(F("*** ERROR: Activates TRANSCEIVE routine failed!\n"));
-		errorCounter++;
-		return -6;
-	}
-	timer = printTime("transceive routine", timer);
-	//Send REQA/WUPA, 7 bits in last byte
-	cmd[0] = 0x26;
-	if (!sendData(cmd, 1, 0x07)) {
-		hackyReadDebug(F("*** ERROR: Send REQA/WUPA failed!\n"));
-		errorCounter++;
-		return -8;
-	}
-	timer = printTime("reqa", timer);
-	// READ 2 bytes ATQA into  buffer
-	if (!readData(2, buffer)) {
-		hackyReadDebug(F("*** ERROR: READ 2 bytes ATQA failed!\n"));
-		errorCounter++;
-		return -9;
-	}
-	timer = printTime("atqa", timer);
-	if(buffer[0] == 255){
-		errorCounter = 0;
-		return 0;
-	}
-	else if(buffer[0] != 4 && buffer[0] != 7 && buffer[0] != 10){
-		errorCounter++;
-		return -1;
-	}
-	
-	cmd[0] = 0x93;
-	cmd[1] = 0x20;
-	if (!sendData(cmd, 2, 0x00)) {
-		hackyReadDebug(F("*** ERROR: Send Anti collision 1 failed!\n"));
-		errorCounter++;
-		return -11;
-	}
-	timer = printTime("anti collision", timer);
-	uint8_t numBytes = rxBytesReceived();
-	if (numBytes != 5) {
-		hackyReadDebug(F("*** ERROR: Read 5 bytes sak failed!\n"));
-		
-		return -12;
-	};
-	timer = printTime("sak", timer);
-	if (!readData(5, cmd+2)) {
-		hackyReadDebug("Read 5 bytes failed!");
-		errorCounter++;
-		return -13;
-	}
-	timer = printTime("read data", timer);
-	for (int i = 0; i < 4; i++) buffer[i] = cmd[2 + i];
-	errorCounter = 0;
-	return 1;
-}
-
-
-
 
 int8_t PN5180ISO14443::activateTypeA(uint8_t *buffer, uint8_t kind) {
+	timer = millis();
 	uint8_t cmd[7];
 	uint8_t uidLength = 0;
-	uint32_t timer = millis();
+	reset();
 	// Load standard TypeA protocol already done in reset()
 	if (!loadRFConfig(0x0, 0x80)) {
-		// PN5180DEBUG(F("*** ERROR: Load standard TypeA protocol failed!\n"));
-		return -1;
+		Serial.println(F("*** ERROR: Load standard TypeA protocol failed!\n"));
+		return -2;
 	}
-	
+	printTime("loadRFConfig");
 	// activate RF field
-	setRF_on();
-	delay(10);
+	if(!setRF_on()){
+		return -4;
+	};
+	
+	// printTime("setRF_on");
+	// wait RF-field to ramp-up
+	// delay(4);
 	timer = millis();
 	// OFF Crypto
 	if (!writeRegisterWithAndMask(SYSTEM_CONFIG, 0xFFFFFFBF)) {
-		// PN5180DEBUG(F("*** ERROR: OFF Crypto failed!\n"));
-		return -1;
+		Serial.println(F("*** ERROR: OFF Crypto failed!\n"));
+		return -5;
 	}
+	printTime("off crypto");
 	// clear RX CRC
 	if (!writeRegisterWithAndMask(CRC_RX_CONFIG, 0xFFFFFFFE)) {
-		// PN5180DEBUG(F("*** ERROR: Clear RX CRC failed!\n"));
-		return -1;
+		Serial.println(F("*** ERROR: Clear RX CRC failed!\n"));
+		return -6;
 	}
+	printTime("clear rx crc");
 	// clear TX CRC
 	if (!writeRegisterWithAndMask(CRC_TX_CONFIG, 0xFFFFFFFE)) {
-		// PN5180DEBUG(F("*** ERROR: Clear TX CRC failed!\n"));
-		return -1;
+		Serial.println(F("*** ERROR: Clear TX CRC failed!\n"));
+		return -7;
 	}
+	printTime("clear tx crc");
 
 	// set the PN5180 into IDLE state  
 	if (!writeRegisterWithAndMask(SYSTEM_CONFIG, 0xFFFFFFF8)) {
-		// PN5180DEBUG(F("*** ERROR: set IDLE state failed!\n"));
-		return -1;
+		Serial.println(F("*** ERROR: set IDLE state failed!\n"));
+		return -8;
 	}
+	printTime("set to idle");
 		
 	  // activate TRANSCEIVE routine  
 	if (!writeRegisterWithOrMask(SYSTEM_CONFIG, 0x00000003)) {
-		// PN5180DEBUG(F("*** ERROR: Activates TRANSCEIVE routine failed!\n"));
-		return -1;
+		Serial.println(F("*** ERROR: Activates TRANSCEIVE routine failed!\n"));
+		return -9;
 	}
-	// Serial.print("time after the 4 whatevers -- ");
-	// Serial.println(millis() - timer);
-	// timer = millis();
-	
+	printTime("activate tranceive");
 	// wait for wait-transmit state
+	// delay(5);
 	PN5180TransceiveStat transceiveState = getTransceiveState();
 	if (PN5180_TS_WaitTransmit != transceiveState) {
-		// PN5180DEBUG(F("*** ERROR: Transceiver not in state WaitTransmit!?\n"));
-		return -1;
+		Serial.println(F("*** ERROR: Transceiver not in state WaitTransmit i mean what the H!?\n"));
+		return -3;
 	}
-	// Serial.print("time after wait-transmit -- ");
-	// Serial.println(millis() - timer);
-	// timer = millis();
+	printTime("wait for transmit");
+	
 /*	uint8_t irqConfig = 0b0000000; // Set IRQ active low + clear IRQ-register
     writeEEprom(IRQ_PIN_CONFIG, &irqConfig, 1);
     // enable only RX_IRQ_STAT, TX_IRQ_STAT and general error IRQ
@@ -309,92 +207,83 @@ int8_t PN5180ISO14443::activateTypeA(uint8_t *buffer, uint8_t kind) {
 
 	// clear all IRQs
 	clearIRQStatus(0xffffffff); 
-	// Serial.print("time after clear irq -- ");
-	// Serial.println(millis() - timer);
-	// timer = millis();
+	printTime("clear irq");
+
 	//Send REQA/WUPA, 7 bits in last byte
 	cmd[0] = (kind == 0) ? 0x26 : 0x52;
 	if (!sendData(cmd, 1, 0x07)) {
-		// PN5180DEBUG(F("*** ERROR: Send REQA/WUPA failed!\n"));
+		Serial.println(F("*** ERROR: Send REQA/WUPA failed!\n"));
 		return 0;
 	}
-	// Serial.print("time after send reqa -- ");
-	// Serial.println(millis() - timer);
-	
+	printTime("send reqa");
 	
 	// wait some mSecs for end of RF receiption
-	delay(10);
-	// timer = millis();
-	
-	// READ 2 bytes ATQA into  buffer
+	// delay(10);
+	timer = millis();
+	// Serial.println("\nIRQ status before aqta into buffer");
+	// showIRQStatus(getIRQStatus());
+	// READ 2 bytes ATQA into  buffers
 	if (!readData(2, buffer)) {
-		// PN5180DEBUG(F("*** ERROR: READ 2 bytes ATQA failed!\n"));
+		Serial.println(F("*** ERROR: READ 2 bytes ATQA failed!\n"));
 		return 0;
 	}
-	// Serial.print("time after aqta-- ");
-	// Serial.println(millis() - timer);
-	// timer = millis();
-	// printBuffer(buffer, 10);
-	
-	// 
+	printTime("read aqta");
+	// delay(2);
 	unsigned long startedWaiting = millis();
-	while (PN5180_TS_WaitTransmit != getTransceiveState()) {   
-		if (millis() - startedWaiting > 10) {
-			// PN5180DEBUG(F("*** ERROR: timeout in PN5180_TS_WaitTransmit!\n"));
-			return -1; 
-		}	
+	if(getTransceiveState() != PN5180_TS_WaitTransmit){
+		return -10;
 	}
-	// Serial.print("time after wait-transmit num 2 -- ");
-	// Serial.println(millis() - timer);
-	// timer = millis();
+	// while (PN5180_TS_WaitTransmit != getTransceiveState()) {   
+	// 	if (millis() - startedWaiting > 5) {
+	// 		Serial.println(F("*** ERROR: timeout in PN5180_TS_WaitTransmit!\n"));
+	// 		return -1; 
+	// 	}	
+	// }
+	printTime("wait transmit, part 2");
+	
 	// clear all IRQs
 	clearIRQStatus(0xffffffff); 
-	// Serial.print("time after clear irq 2 -- ");
-	// Serial.println(millis() - timer);
-	// timer = millis();
+	printTime("clear irq, part 2");
+	
 	// send Anti collision 1, 8 bits in last byte
 	cmd[0] = 0x93;
 	cmd[1] = 0x20;
 	if (!sendData(cmd, 2, 0x00)) {
-		// PN5180DEBUG(F("*** ERROR: Send Anti collision 1 failed!\n"));
+		Serial.println(F("*** ERROR: Send Anti collision 1 failed!\n"));
 		return -2;
 	}
-	// Serial.print("time after anti-collision 1 -- ");
-	// Serial.println(millis() - timer);
+	printTime("anti collision");
 	
 	// wait some mSecs for end of RF receiption
-	delay(5);
-	// timer = millis();
+	// delay(1);
+	timer = millis();
+
 	uint8_t numBytes = rxBytesReceived();
+	printTime("rxBytesReceived");
 	if (numBytes != 5) {
-		// PN5180DEBUG(F("*** ERROR: Read 5 bytes sak failed!\n"));
+		Serial.println(F("*** ERROR: Read 5 bytes sak failed!\n"));
 		return -2;
 	};
-	// Serial.print("time after rx bytes received -- ");
-	// Serial.println(millis() - timer);
-	// timer = millis();
 	// read 5 bytes sak, we will store at offset 2 for later usage
 	if (!readData(5, cmd+2)) {
-		// Serial.println("Read 5 bytes failed!");
+		Serial.println("Read 5 bytes failed!");
 		return -2;
 	}
-	// Serial.print("time after read 5 bytes sak -- ");
-	// Serial.println(millis() - timer);
-	// timer = millis();
+	printTime("5 bytes sak");
 	// We do have a card now! enable CRC and send anticollision
 	// save the first 4 bytes of UID
-	for (int i = 0; i < 4; i++) buffer[i] = cmd[2 + i];
-	// printBuffer(buffer, 10);
+	for (int i = 0; i < 4; i++){
+		buffer[i] = cmd[2 + i];
+	}
 	
 	//Enable RX CRC calculation
 	if (!writeRegisterWithOrMask(CRC_RX_CONFIG, 0x01)) 
 	  return -2;
+	printTime("enable rx crc");
 	//Enable TX CRC calculation
 	if (!writeRegisterWithOrMask(CRC_TX_CONFIG, 0x01)) 
 	  return -2;
-	// Serial.print("time after tx/rx crc -- ");
-	// Serial.println(millis() - timer);
-	// timer = millis();
+	printTime("enable tx crc");
 
 	//Send Select anti collision 1, the remaining bytes are already in offset 2 onwards
 	cmd[0] = 0x93;
@@ -403,91 +292,64 @@ int8_t PN5180ISO14443::activateTypeA(uint8_t *buffer, uint8_t kind) {
 		// no remaining bytes, we have a 4 byte UID
 		return 4;
 	}
-	// Serial.print("time after anti collision 1 (2?) -- ");
-	// Serial.println(millis() - timer);
-	// timer = millis();
+	printTime("anti collision 2");
 	//Read 1 byte SAK into buffer[2]
 	if (!readData(1, buffer+2)) 
 	  return -2;
-	// Serial.print("time after 1 byte sak -- ");
-	// Serial.println(millis() - timer);
-	// timer = millis();
-	// printBuffer(buffer, 10);
+	printTime("1 byte sak");
 	// Check if the tag is 4 Byte UID or 7 byte UID and requires anti collision 2
 	// If Bit 3 is 0 it is 4 Byte UID
 	if ((buffer[2] & 0x04) == 0) {
 		// Take first 4 bytes of anti collision as UID store at offset 3 onwards. job done
 		for (int i = 0; i < 4; i++) buffer[3+i] = cmd[2 + i];
-		// Serial.println("I don't think I get here..?");
-		// printBuffer(buffer, 10);
 		uidLength = 4;
 	}
-	
 	else {
 		// Take First 3 bytes of UID, Ignore first byte 88(CT)
 		if (cmd[2] != 0x88)
 		  return 0;
 		for (int i = 0; i < 3; i++) buffer[3+i] = cmd[3 + i];
-		// printBuffer(buffer, 10);
 		// Clear RX CRC
-		timer = millis();
 		if (!writeRegisterWithAndMask(CRC_RX_CONFIG, 0xFFFFFFFE)) 
 	      return -2;
 		// Clear TX CRC
 		if (!writeRegisterWithAndMask(CRC_TX_CONFIG, 0xFFFFFFFE)) 
 	      return -2;
-		// Serial.print("time after tx/rx crc thing in else -- ");
-		// Serial.println(millis() - timer);
-		// timer = millis();
 		// Do anti collision 2
 		cmd[0] = 0x95;
 		cmd[1] = 0x20;
 		if (!sendData(cmd, 2, 0x00)) 
 	      return -2;
-		// Serial.print("time after anti collision 2 -- ");
-		// Serial.println(millis() - timer);
-		// timer = millis();
 		//Read 5 bytes. we will store at offset 2 for later use
 		if (!readData(5, cmd+2)) 
 	      return -2;
-		// Serial.print("time after read 5 bytes -- ");
-		// Serial.println(millis() - timer);
-		// timer = millis();
 		// first 4 bytes belongs to last 4 UID bytes, we keep it.
 		for (int i = 0; i < 4; i++) {
 		  buffer[6 + i] = cmd[2+i];
 		}
-		// printBuffer(buffer, 10);
 		//Enable RX CRC calculation
 		if (!writeRegisterWithOrMask(CRC_RX_CONFIG, 0x01)) 
 	      return -2;
 		//Enable TX CRC calculation
 		if (!writeRegisterWithOrMask(CRC_TX_CONFIG, 0x01)) 
 	      return -2;
-		// Serial.print("time after another tx/rx thing -- ");
-		// Serial.println(millis() - timer);
-		// timer = millis();
 		//Send Select anti collision 2 
 		cmd[0] = 0x95;
 		cmd[1] = 0x70;
 		if (!sendData(cmd, 7, 0x00)) 
 	      return -2;
-		// Serial.print("time after anti collision 2 (2) -- ");
-		// Serial.println(millis() - timer);
-		// timer = millis();
 		//Read 1 byte SAK into buffer[2]
 		if (!readData(1, buffer + 2)) 
 	      return -2;
-		// printBuffer(buffer, 10);
-		// Serial.print("time after 1 byte sak (last thing) -- ");
-		// Serial.println(millis() - timer);
-		// timer = millis();
 		uidLength = 7;
 	}
+	printTime("the long function");
     return uidLength;
 }
 
-
+uint8_t *PN5180ISO14443::getTagData(){
+	return tagData;
+}
 
 bool PN5180ISO14443::mifareBlockRead(uint8_t blockno, uint8_t *buffer) {
 	bool success = false;
@@ -542,8 +404,6 @@ bool PN5180ISO14443::mifareHalt() {
 	return true;
 }
 
-
-
 int8_t PN5180ISO14443::readCardSerial(uint8_t *buffer) {
   
     uint8_t response[10];
@@ -597,6 +457,7 @@ int8_t PN5180ISO14443::readCardSerial(uint8_t *buffer) {
 			validUID = false;
 		};
 	};
+	if(uidLength > 10) validUID = false;
 //	mifareHalt();
 	if (validUID) {
 		for (int i = 0; i < uidLength; i++) buffer[i] = response[i+3];
@@ -611,4 +472,5 @@ bool PN5180ISO14443::isCardPresent() {
     uint8_t buffer[10];
 	return (readCardSerial(buffer) >=4);
 }
+
 

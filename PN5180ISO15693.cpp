@@ -74,31 +74,36 @@ ISO15693ErrorCode PN5180ISO15693::getInventory(uint8_t *uid) {
  * https://www.nxp.com.cn/docs/en/application-note/AN12650.pdf
  * Request format: SOF, Req.Flags, Inventory, AFI (opt.), Mask len, Mask value, CRC16, EOF
  * Response format: SOF, Resp.Flags, DSFID, UID, CRC16, EOF
- *
  */
 ISO15693ErrorCode PN5180ISO15693::getInventoryMultiple(uint8_t *uid, uint8_t maxTags, uint8_t *numCard) {
   PN5180DEBUG("PN5180ISO15693: Get Inventory...");
   uint16_t collision[maxTags];
   *numCard = 0;
-  uint8_t numCol = 0;
-  inventoryPoll(uid, maxTags, numCard, &numCol, collision);
+  uint8_t numCollisions = 0;
+  // Send an inventory command and listen for the response
+  inventoryPoll(uid, maxTags, numCard, &numCollisions, collision);
   PN5180DEBUG("Number of collisions=");
-  PN5180DEBUG(numCol);
+  PN5180DEBUG(numCollisions);
   PN5180DEBUG("\n");
-
-  while(numCol){                                                 // 5+ Continue until no collisions detected
+	// Continue to call inventory until no further collisions detected
+	// (numCard will be incremented automatically on each call) 
+  while(numCollisions > 0){                                                 
 #ifdef DEBUG
     printf("inventoryPoll: Polling with mask=0x%X\n", collision[0]);
 #endif
-    inventoryPoll(uid, maxTags, numCard, &numCol, collision);
-    numCol--;
-    for(int i=0; i<numCol; i++){
+    inventoryPoll(uid, maxTags, numCard, &numCollisions, collision);
+    numCollisions--;
+    for(int i=0; i<numCollisions; i++){
       collision[i] = collision[i+1];
     }
   }
   return ISO15693_EC_OK;
 }
 
+/**
+ * https://www.nxp.com.cn/docs/en/application-note/AN12650.pdf
+ * 4.2.1 Example Code and 4.2.2 Description
+ */
 ISO15693ErrorCode PN5180ISO15693::inventoryPoll(uint8_t *uid, uint8_t maxTags, uint8_t *numCard, uint8_t *numCol, uint16_t *collision){
   uint8_t maskLen = 0;
   if(*numCol > 0){
@@ -110,7 +115,7 @@ ISO15693ErrorCode PN5180ISO15693::inventoryPoll(uint8_t *uid, uint8_t maxTags, u
   } 
   uint8_t *p = (uint8_t*)&(collision[0]);
   //                      Flags,  CMD,
-  uint8_t inventory[7] = { 0x06, 0x01, uint8_t(maskLen*4), p[0], p[1], p[2], p[3] };
+  uint8_t inventory[7] = { 0x06, 0x01, maskLen*4, p[0], p[1], p[2], p[3] };
   //                         |\- inventory flag + high data rate
   //                         \-- 16 slots: upto 16 cards, no AFI field present
   uint8_t cmdLen = 3 + (maskLen/2) + (maskLen%2);
@@ -120,7 +125,7 @@ ISO15693ErrorCode PN5180ISO15693::inventoryPoll(uint8_t *uid, uint8_t maxTags, u
 #endif
   clearIRQStatus(0x000FFFFF);                                      // 3. Clear all IRQ_STATUS flags
   sendData(inventory, cmdLen, 0);                                  // 4. 5. 6. Idle/StopCom Command, Transceive Command, Inventory command
-  
+
   for(int slot=0; slot<16; slot++){                                // 7. Loop to check 16 time slots for data
     uint32_t rxStatus;
     uint32_t irqStatus = getIRQStatus();
@@ -171,7 +176,7 @@ ISO15693ErrorCode PN5180ISO15693::inventoryPoll(uint8_t *uid, uint8_t maxTags, u
       printf("numCard=%d\n", *numCard);
 #endif
     }
-    
+
     if(slot+1 < 16){ // If we have more cards to poll for...
       writeRegisterWithAndMask(TX_CONFIG, 0xFFFFFB3F);             // 11. Next SEND_DATA will only include EOF
       clearIRQStatus(0x000FFFFF);                                  // 14. Clear all IRQ_STATUS flags
@@ -182,6 +187,9 @@ ISO15693ErrorCode PN5180ISO15693::inventoryPoll(uint8_t *uid, uint8_t maxTags, u
   setupRF();                                                       // 1. 2. Load ISO15693 config, RF on
   return ISO15693_EC_OK;
 }
+
+
+
 
 /*
  * Read single block, code=20
@@ -325,7 +333,7 @@ ISO15693ErrorCode PN5180ISO15693::writeSingleBlock(uint8_t *uid, uint8_t blockNo
 #endif
 
   uint8_t *resultPtr;
-  ISO15693ErrorCode rc =  issueISO15693Command(writeCmd, writeCmdSize, &resultPtr);
+  ISO15693ErrorCode rc = issueISO15693Command(writeCmd, writeCmdSize, &resultPtr);
   if (ISO15693_EC_OK != rc) {
     free(writeCmd);
     return rc;
@@ -372,12 +380,12 @@ ISO15693ErrorCode PN5180ISO15693::readMultipleBlock(uint8_t *uid, uint8_t blockN
     PN5180DEBUG("End of block exceeds length of data");
     return ISO15693_EC_BLOCK_NOT_AVAILABLE;
   }
-  
+
   //                              flags, cmd, uid,             1stBlock blocksToRead  
-  uint8_t readMultipleCmd[12] = { 0x22, 0x23, 1,2,3,4,5,6,7,8, blockNo, uint8_t(numBlock-1) }; // UID has LSB first!
+  uint8_t readMultipleCmd[12] = { 0x22, 0x23, 1,2,3,4,5,6,7,8, blockNo, numBlock-1 }; // UID has LSB first!
   //                                |\- high data rate
   //                                \-- no options, addressed by UID
-  
+
   for (int i=0; i<8; i++) {
     readMultipleCmd[2+i] = uid[i];
   }
@@ -421,6 +429,7 @@ ISO15693ErrorCode PN5180ISO15693::readMultipleBlock(uint8_t *uid, uint8_t blockN
 
   return ISO15693_EC_OK;
 }
+
 
 /*
  * Get System Information, code=2B
@@ -506,11 +515,8 @@ ISO15693ErrorCode PN5180ISO15693::getSystemInfo(uint8_t *uid, uint8_t *blockSize
 
   uint8_t infoFlags = readBuffer[1];
   if (infoFlags & 0x01) { // DSFID flag
-#ifdef DEBUG
-    uint8_t dsfid = *p++;
-#endif
     PN5180DEBUG("DSFID=");  // Data storage format identifier
-    PN5180DEBUG(formatHex(dsfid));
+    PN5180DEBUG(formatHex(uint8_t(*p++)));
     PN5180DEBUG("\n");
   }
 #ifdef DEBUG
@@ -565,11 +571,8 @@ ISO15693ErrorCode PN5180ISO15693::getSystemInfo(uint8_t *uid, uint8_t *blockSize
 #endif
    
   if (infoFlags & 0x08) { // IC reference
-#ifdef DEBUG
-    uint8_t iRef = *p++;
-#endif
     PN5180DEBUG("IC Ref=");
-    PN5180DEBUG(formatHex(iRef));
+    PN5180DEBUG(formatHex(uint8_t(*p++)));
     PN5180DEBUG("\n");
   }
 #ifdef DEBUG
@@ -727,17 +730,28 @@ ISO15693ErrorCode PN5180ISO15693::issueISO15693Command(uint8_t *cmd, uint8_t cmd
 
   uint32_t irqR = getIRQStatus();
   if (0 == (irqR & RX_SOF_DET_IRQ_STAT)) {
-    PN5180DEBUG("Didnt detect RX_SOF_DET_IRQ_STAT after sendData");
-	  return EC_NO_CARD;
+	PN5180DEBUG("Didnt detect RX_SOF_DET_IRQ_STAT after sendData");
+	return EC_NO_CARD;
   }
   
-  unsigned long startedWaiting = millis();
+  // The following line prevents code from continuing until the RX_IRQ_STAT flag 
+  // is set in the IRQ_STATUS register, which signifies the end of RF reception
+  // But, should the card be removed from the reader quickly before reception is complete,
+  // this bit will never be received and the code will hang at this point.
+  // TODO implement a reasonable timeout in which to expect the bit to be read, as in https://github.com/playfultechnology/PN5180-Library/blob/e64468d65906c207bdaf900a1645615c71f3d5ca/PN5180.cpp#L489-L494
+  /*
   while(!(irqR & RX_IRQ_STAT)) {
-    irqR = getIRQStatus();
-    if (millis() - startedWaiting > commandTimeout) {
-      PN5180DEBUG("Didnt detect RX_IRQ_STAT after sendData");
-      return EC_NO_CARD;
-    }
+	delay(1);
+	irqR = getIRQStatus();
+  }
+  */
+  unsigned long startedWaiting = millis();
+  while (!(irqR & RX_IRQ_STAT)) {
+      irqR = getIRQStatus();
+      if (millis() - startedWaiting > commandTimeout) {
+          PN5180DEBUG("Didnt detect RX_IRQ_STAT after sendData");
+          return EC_NO_CARD;
+      }
   }
   
   uint32_t rxStatus;
@@ -769,9 +783,9 @@ ISO15693ErrorCode PN5180ISO15693::issueISO15693Command(uint8_t *cmd, uint8_t cmd
 
   uint32_t irqStatus = getIRQStatus();
   if (0 == (RX_SOF_DET_IRQ_STAT & irqStatus)) { // no card detected
-    PN5180DEBUG("Didnt detect RX_SOF_DET_IRQ_STAT after readData");
-    clearIRQStatus(TX_IRQ_STAT | IDLE_IRQ_STAT);
-    return EC_NO_CARD;
+     PN5180DEBUG("Didnt detect RX_SOF_DET_IRQ_STAT after readData");
+     clearIRQStatus(TX_IRQ_STAT | IDLE_IRQ_STAT);
+     return EC_NO_CARD;
   }
 
   uint8_t responseFlags = (*resultPtr)[0];
@@ -819,27 +833,27 @@ bool PN5180ISO15693::setupRF() {
   return true;
 }
 
-const char *PN5180ISO15693::strerror(ISO15693ErrorCode errno) {
-  PN5180DEBUG(("ISO15693ErrorCode="));
+const __FlashStringHelper *PN5180ISO15693::strerror(ISO15693ErrorCode errno) {
+  PN5180DEBUG(F("ISO15693ErrorCode="));
   PN5180DEBUG(errno);
   PN5180DEBUG("\n");
   
   switch (errno) {
-    case EC_NO_CARD: return ("No card detected!");
-    case ISO15693_EC_OK: return ("OK!");
-    case ISO15693_EC_NOT_SUPPORTED: return ("Command is not supported!");
-    case ISO15693_EC_NOT_RECOGNIZED: return ("Command is not recognized!");
-    case ISO15693_EC_OPTION_NOT_SUPPORTED: return ("Option is not supported!");
-    case ISO15693_EC_UNKNOWN_ERROR: return ("Unknown error!");
-    case ISO15693_EC_BLOCK_NOT_AVAILABLE: return ("Specified block is not available!");
-    case ISO15693_EC_BLOCK_ALREADY_LOCKED: return ("Specified block is already locked!");
-    case ISO15693_EC_BLOCK_IS_LOCKED: return ("Specified block is locked and cannot be changed!");
-    case ISO15693_EC_BLOCK_NOT_PROGRAMMED: return ("Specified block was not successfully programmed!");
-    case ISO15693_EC_BLOCK_NOT_LOCKED: return ("Specified block was not successfully locked!");
+    case EC_NO_CARD: return F("No card detected!");
+    case ISO15693_EC_OK: return F("OK!");
+    case ISO15693_EC_NOT_SUPPORTED: return F("Command is not supported!");
+    case ISO15693_EC_NOT_RECOGNIZED: return F("Command is not recognized!");
+    case ISO15693_EC_OPTION_NOT_SUPPORTED: return F("Option is not supported!");
+    case ISO15693_EC_UNKNOWN_ERROR: return F("Unknown error!");
+    case ISO15693_EC_BLOCK_NOT_AVAILABLE: return F("Specified block is not available!");
+    case ISO15693_EC_BLOCK_ALREADY_LOCKED: return F("Specified block is already locked!");
+    case ISO15693_EC_BLOCK_IS_LOCKED: return F("Specified block is locked and cannot be changed!");
+    case ISO15693_EC_BLOCK_NOT_PROGRAMMED: return F("Specified block was not successfully programmed!");
+    case ISO15693_EC_BLOCK_NOT_LOCKED: return F("Specified block was not successfully locked!");
     default:
       if ((errno >= 0xA0) && (errno <= 0xDF)) {
-        return ("Custom command error code!");
+        return F("Custom command error code!");
       }
-      else return ("Undefined error code in ISO15693!");
+      else return F("Undefined error code in ISO15693!");
   }
 }

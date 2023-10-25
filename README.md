@@ -7,40 +7,22 @@ Arduino Uno / Arduino ESP-32 library for PN5180-NFC Module from NXP Semiconducto
 
 Release Notes:
 
-Version 2.1 - 01.04.2023
+Version 1.8.1 - 19.08.2021
 
-	* readMultipleBlock(), getInventoryMultiple() and getInventoryPoll() has been implemented, thanks to @laplacier !
-	* multiple ISO-15693 tags can be read at once, thanks to @laplacier ! 
-	* fixed some bugs and warnings with c++17
-	
-Version 2.0 - 17.10.2022
+	* Added changes from Nettermann90
 
-	* allow to instantiate with custom SPI class, thanks to  @mwick83!
-	
-Version 1.9 - 05.10.2021
+Version 1.7 - 12.07.2021
 
-	* avoid endless loop in reset()
-	
-Version 1.8 - 05.04.2021
+	* Migrated branch from Dirk Carstensen for ISO14443 tags to the library.
+	* See https://github.com/tueddy/PN5180-Library/tree/ISO14443
 
-	* Revert previous changes, SPI class was copied and caused problems
-	* Speedup reading (shorter delays) in reset/transceive commands
-	* better initialization for ISO-14443 cards, see https://www.nxp.com.cn/docs/en/application-note/AN12650.pdf
-	
-Version 1.7 - 27.03.2021
+Version 1.6 - 13.03.2021
 
-	* allow to setup with other SPIClass than default SPI, thanks to @tyllmoritz !
-	
-Version 1.6 - 31.01.2021
+	* Added PN5180::writeEEPROM
 
-	* fix compiler warnings for platform.io
-	* add LPCD (low power card detection) example for ESP-32 (with deep sleep tp save battery power)
+Version 1.5 - 29.01.2020
 
-	Version 1.5 - 07.12.2020
-
-	* ISO-14443 protocol, basic support for Mifaire cards
-	* Low power card detection
-	* handle transceiveCommand timeout
+	* Fixed offset in readSingleBlock. Was off by 1.
 
 Version 1.4 - 13.11.2019
 

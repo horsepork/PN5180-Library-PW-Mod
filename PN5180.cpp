@@ -28,7 +28,7 @@
 #define PN5180_WRITE_REGISTER_OR_MASK   (0x01)
 #define PN5180_WRITE_REGISTER_AND_MASK  (0x02)
 #define PN5180_READ_REGISTER            (0x04)
-#define PN5180_WRITE_EEPROM				(0x06)
+#define PN5180_WRITE_EEPROM				      (0x06)
 #define PN5180_READ_EEPROM              (0x07)
 #define PN5180_SEND_DATA                (0x09)
 #define PN5180_READ_DATA                (0x0A)
@@ -37,7 +37,10 @@
 #define PN5180_RF_ON                    (0x16)
 #define PN5180_RF_OFF                   (0x17)
 
-uint8_t PN5180::readBuffer[508];
+
+
+// uint8_t PN5180::readBuffer[508];
+uint16_t PN5180::ID_Incrementor = 0;
 
 PN5180::PN5180(uint8_t SSpin, uint8_t BUSYpin, uint8_t RSTpin, SPIClass& spi) :
   PN5180_NSS(SSpin),
@@ -45,33 +48,27 @@ PN5180::PN5180(uint8_t SSpin, uint8_t BUSYpin, uint8_t RSTpin, SPIClass& spi) :
   PN5180_RST(RSTpin),
   PN5180_SPI(spi)
 {
-  /*
-   * 11.4.1 Physical Host Interface
-   * The interface of the PN5180 to a host microcontroller is based on a SPI interface,
-   * extended by signal line BUSY. The maximum SPI speed is 7 Mbps and fixed to CPOL
-   * = 0 and CPHA = 0.
-   */
-  // Settings for PN5180: 7Mbps, MSB first, SPI_MODE0 (CPOL=0, CPHA=0)
   SPI_SETTINGS = SPISettings(7000000, MSBFIRST, SPI_MODE0);
+  readerID = ID_Incrementor++;
 }
 
-PN5180::PN5180(uint8_t _nss, Adafruit_MCP23X08 *_mcp, uint8_t _address, SPIClass& _spi) :
+PN5180::PN5180(uint8_t _nss, Adafruit_MCP23X08 *_mcp, SPIClass& _spi) :
   PN5180_NSS(_nss),
   mcp(_mcp),
-  I2C_Address(_address),
   PN5180_SPI(_spi),
   PN5180_RST(6),
   PN5180_BUSY(7)
 {
   I2C_Mode = true;
-  SPI_SETTINGS = SPISettings(7000000, MSBFIRST, SPI_MODE0);
+  SPI_SETTINGS = SPISettings(500000, MSBFIRST, SPI_MODE0);
+  readerID = ID_Incrementor++;
 }
 
 void PN5180::begin() {
   if(I2C_Mode){
     mcp->pinMode(PN5180_NSS, OUTPUT);
-    // mcp->pinMode(PN5180_BUSY, INPUT);
-    // mcp->pinMode(PN5180_RST, OUTPUT);
+    mcp->pinMode(PN5180_BUSY, INPUT);
+    mcp->pinMode(PN5180_RST, OUTPUT);
   }
   else{
     pinMode(PN5180_NSS, OUTPUT);
@@ -79,10 +76,12 @@ void PN5180::begin() {
     pinMode(PN5180_RST, OUTPUT);
   }
   
+
   digitalWrite_alt(PN5180_NSS, HIGH); // disable
   // digitalWrite_alt(PN5180_RST, HIGH); // no reset
+  reset();
 
-  // PN5180_SPI.begin();
+  PN5180_SPI.begin();
   PN5180DEBUG(F("SPI pinout: "));
   PN5180DEBUG(F("SS=")); PN5180DEBUG(SS);
   PN5180DEBUG(F(", MOSI=")); PN5180DEBUG(MOSI);
@@ -122,10 +121,9 @@ bool PN5180::writeRegister(uint8_t reg, uint32_t value) {
   uint8_t buf[6] = { PN5180_WRITE_REGISTER, reg, p[0], p[1], p[2], p[3] };
 
   PN5180_SPI.beginTransaction(SPI_SETTINGS);
-  transceiveCommand(buf, 6);
+  bool success = transceiveCommand(buf, 6);
   PN5180_SPI.endTransaction();
-
-  return true;
+  return success;
 }
 
 /*
@@ -152,10 +150,10 @@ bool PN5180::writeRegisterWithOrMask(uint8_t reg, uint32_t mask) {
   uint8_t buf[6] = { PN5180_WRITE_REGISTER_OR_MASK, reg, p[0], p[1], p[2], p[3] };
 
   PN5180_SPI.beginTransaction(SPI_SETTINGS);
-  transceiveCommand(buf, 6);
+  bool success = transceiveCommand(buf, 6);
   PN5180_SPI.endTransaction();
-
-  return true;
+  
+  return success;
 }
 
 /*
@@ -182,10 +180,10 @@ bool PN5180::writeRegisterWithAndMask(uint8_t reg, uint32_t mask) {
   uint8_t buf[6] = { PN5180_WRITE_REGISTER_AND_MASK, reg, p[0], p[1], p[2], p[3] };
 
   PN5180_SPI.beginTransaction(SPI_SETTINGS);
-  transceiveCommand(buf, 6);
+  bool success = transceiveCommand(buf, 6);
   PN5180_SPI.endTransaction();
 
-  return true;
+  return success;
 }
 
 /*
@@ -203,14 +201,14 @@ bool PN5180::readRegister(uint8_t reg, uint32_t *value) {
   uint8_t cmd[2] = { PN5180_READ_REGISTER, reg };
 
   PN5180_SPI.beginTransaction(SPI_SETTINGS);
-  transceiveCommand(cmd, 2, (uint8_t*)value, 4);
+  bool success = transceiveCommand(cmd, 2, (uint8_t*)value, 4);
   PN5180_SPI.endTransaction();
 
   PN5180DEBUG(F("Register value=0x"));
   PN5180DEBUG(formatHex(*value));
   PN5180DEBUG("\n");
 
-  return true;
+  return success;
 }
 
 /*
@@ -253,7 +251,7 @@ bool PN5180::readEEprom(uint8_t addr, uint8_t *buffer, int len) {
   uint8_t cmd[3] = { PN5180_READ_EEPROM, addr, uint8_t(len) };
 
   PN5180_SPI.beginTransaction(SPI_SETTINGS);
-  transceiveCommand(cmd, 3, buffer, len);
+  bool success = transceiveCommand(cmd, 3, buffer, len);
   PN5180_SPI.endTransaction();
 
 #ifdef DEBUG
@@ -265,7 +263,7 @@ bool PN5180::readEEprom(uint8_t addr, uint8_t *buffer, int len) {
   PN5180DEBUG("\n");
 #endif
 
-  return true;
+  return success;
 }
 
 
@@ -308,9 +306,16 @@ bool PN5180::sendData(uint8_t *data, int len, uint8_t validBits) {
     buffer[2+i] = data[i];
   }
 
-  writeRegisterWithAndMask(SYSTEM_CONFIG, 0xfffffff8);  // Idle/StopCom Command
-  writeRegisterWithOrMask(SYSTEM_CONFIG, 0x00000003);   // Transceive Command
-  /*rg
+  if(!writeRegisterWithAndMask(SYSTEM_CONFIG, 0xfffffff8)){  // Idle/StopCom Command
+    // Serial.println("idle/stop failed?");
+    return false;
+  }
+  
+  if(!writeRegisterWithOrMask(SYSTEM_CONFIG, 0x00000003)){   // Transceive Command
+    // Serial.println("Transceive failed");
+    return false;
+  }
+  /*
    * Transceive command; initiates a transceive cycle.
    * Note: Depending on the value of the Initiator bit, a
    * transmission is started or the receiver is enabled
@@ -321,7 +326,7 @@ bool PN5180::sendData(uint8_t *data, int len, uint8_t validBits) {
 
   PN5180TransceiveStat transceiveState = getTransceiveState();
   if (PN5180_TS_WaitTransmit != transceiveState) {
-    PN5180DEBUG(F("*** ERROR: Transceiver not in state WaitTransmit!?\n"));
+    PN5180DEBUG(F("*** ERROR: Transceiver not in state WaitTransmit whoa whoa whoa!?\n"));
     return false;
   }
 
@@ -344,7 +349,7 @@ bool PN5180::sendData(uint8_t *data, int len, uint8_t validBits) {
  */
 uint8_t * PN5180::readData(int len) {
   if (len > 508) {
-    PN5180DEBUG(F("*** FATAL: Reading more than 508 bytes is not supported!"));
+    Serial.println(F("*** FATAL: Reading more than 508 bytes is not supported!"));
     return 0L;
   }
 
@@ -355,7 +360,7 @@ uint8_t * PN5180::readData(int len) {
   uint8_t cmd[2] = { PN5180_READ_DATA, 0x00 };
 
   PN5180_SPI.beginTransaction(SPI_SETTINGS);
-  transceiveCommand(cmd, 2, readBuffer, len);
+  bool success = transceiveCommand(cmd, 2, readBuffer, len);
   PN5180_SPI.endTransaction();
 
 #ifdef DEBUG
@@ -370,7 +375,7 @@ uint8_t * PN5180::readData(int len) {
   return readBuffer;
 }
 
-bool PN5180::readData(int len, uint8_t *buffer) {
+bool PN5180::readData(uint8_t len, uint8_t *buffer) {
 	if (len > 508) {
 		return false;
 	}
@@ -483,10 +488,10 @@ bool PN5180::loadRFConfig(uint8_t txConf, uint8_t rxConf) {
   uint8_t cmd[3] = { PN5180_LOAD_RF_CONFIG, txConf, rxConf };
 
   PN5180_SPI.beginTransaction(SPI_SETTINGS);
-  transceiveCommand(cmd, 3);
+  bool success = transceiveCommand(cmd, 3);
   PN5180_SPI.endTransaction();
 
-  return true;
+  return success;
 }
 
 /*
@@ -500,15 +505,19 @@ bool PN5180::setRF_on() {
   uint8_t cmd[2] = { PN5180_RF_ON, 0x00 };
 
   PN5180_SPI.beginTransaction(SPI_SETTINGS);
-  transceiveCommand(cmd, 2);
+  bool success =transceiveCommand(cmd, 2);
   PN5180_SPI.endTransaction();
-
+  if(!success){
+    Serial.println("setrf_on failed?");
+    return false;
+  }
   unsigned long startedWaiting = millis();
   while (0 == (TX_RFON_IRQ_STAT & getIRQStatus())) {   // wait for RF field to set up (max 500ms)
-    if (millis() - startedWaiting > 500) {
-	  PN5180DEBUG(F("Set RF ON timeout\n"));
-	  return false; 
-	}
+    showIRQStatus(getIRQStatus());
+    if (millis() - startedWaiting > 50) {
+      Serial.println(F("Set RF ON timeout\n"));
+      return false; 
+    }
   }; 
   
   clearIRQStatus(TX_RFON_IRQ_STAT);
@@ -526,8 +535,11 @@ bool PN5180::setRF_off() {
   uint8_t cmd[2] { PN5180_RF_OFF, 0x00 };
 
   PN5180_SPI.beginTransaction(SPI_SETTINGS);
-  transceiveCommand(cmd, 2);
+  bool success = transceiveCommand(cmd, 2);
   PN5180_SPI.endTransaction();
+  if(!success){
+    return false;
+  }
 
   unsigned long startedWaiting = millis();
   while (0 == (TX_RFOFF_IRQ_STAT & getIRQStatus())) {   // wait for RF field to shut down
@@ -578,7 +590,33 @@ status register contain information on the exception.
  * 5. Wait until BUSY is low
  * If there is a parameter error, the IRQ is set to ACTIVE and a GENERAL_ERROR_IRQ is set.
  */
-#define transceiveDebug //Serial.println
+void printSendAndReceiveBuffers(uint8_t *sendBuffer, size_t sendBufferLen, uint8_t *recvBuffer, size_t recvBufferLen){
+  Serial.print("Send buf --");
+  for(int i = 0; i < sendBufferLen; i++){
+    Serial.print(" ");
+    Serial.print(sendBuffer[i], HEX);
+  }
+  if(recvBufferLen == 0){
+    Serial.println();
+    return;
+  }
+  Serial.print(", Recv buf --");
+  for(int i = 0; i < recvBufferLen; i++){
+    Serial.print(" ");
+    Serial.print(recvBuffer[i], HEX);
+  }
+  Serial.println();
+}
+
+void PN5180::disable(){
+  digitalWrite_alt(PN5180_NSS, HIGH);
+}
+
+bool PN5180::isBusy(){
+  delayMicroseconds(10);
+  return digitalRead_alt(PN5180_BUSY);
+}
+
 bool PN5180::transceiveCommand(uint8_t *sendBuffer, size_t sendBufferLen, uint8_t *recvBuffer, size_t recvBufferLen) {
 #ifdef DEBUG
   PN5180DEBUG(F("Sending SPI frame: '"));
@@ -588,39 +626,47 @@ bool PN5180::transceiveCommand(uint8_t *sendBuffer, size_t sendBufferLen, uint8_
   }
   PN5180DEBUG("'\n");
 #endif
+uint8_t sendBufferCopy[sendBufferLen];
+for(int i = 0; i < sendBufferLen; i++){
+  sendBufferCopy[i] = sendBuffer[i];
+}
+uint8_t recvBufferCopy[recvBufferLen];
+for(int i = 0; i < sendBufferLen; i++){
+  recvBufferCopy[i] = recvBuffer[i];
+}
 
   // 0.
   unsigned long startedWaiting = millis();
   while (LOW != digitalRead_alt(PN5180_BUSY)) {
     if (millis() - startedWaiting > commandTimeout) {
-		transceiveDebug("transceiveCommand timeout (send/0)");
-    errorCounter++;
+		Serial.println("transceiveCommand timeout (send/0)");
+    printSendAndReceiveBuffers(sendBufferCopy, sendBufferLen, recvBufferCopy, recvBufferLen);
 		return false;
 	};
   }; // wait until busy is low
   // 1.
-  digitalWrite_alt(PN5180_NSS, LOW); delayMicroseconds(750);
+  digitalWrite_alt(PN5180_NSS, LOW); delayMicroseconds(50); //delay(1);
   // 2.
   PN5180_SPI.transfer((uint8_t*)sendBuffer, sendBufferLen);	
   // 3.
   startedWaiting = millis();
   while (HIGH != digitalRead_alt(PN5180_BUSY)) {
     if (millis() - startedWaiting > commandTimeout) {
-		transceiveDebug("transceiveCommand timeout (send/3)");
-    errorCounter++;
+		Serial.println("transceiveCommand timeout (send/3)");
+    printSendAndReceiveBuffers(sendBufferCopy, sendBufferLen, recvBufferCopy, recvBufferLen);
 		return false;
 	}
   }; // wait until busy is high
   // 4.
-  digitalWrite_alt(PN5180_NSS, HIGH); delayMicroseconds(100);
+  digitalWrite_alt(PN5180_NSS, HIGH); delay(1); //delayMicroseconds(650); //delay(1);
   // 5.
   startedWaiting = millis();
   while (LOW != digitalRead_alt(PN5180_BUSY)) {
     if (millis() - startedWaiting > commandTimeout) {
-      transceiveDebug("transceiveCommand timeout (send/5)");
-      errorCounter++;
-      return false;
-    };
+		Serial.println("transceiveCommand timeout (send/5)");
+    printSendAndReceiveBuffers(sendBufferCopy, sendBufferLen, recvBufferCopy, recvBufferLen);
+		return false;
+	};
   }; // wait until busy is low
 
   // check, if write-only
@@ -636,8 +682,7 @@ bool PN5180::transceiveCommand(uint8_t *sendBuffer, size_t sendBufferLen, uint8_
   startedWaiting = millis(); //delay(1);
   while (HIGH != digitalRead_alt(PN5180_BUSY)) {
     if (millis() - startedWaiting > commandTimeout) {
-		transceiveDebug("transceiveCommand timeout (receive/3)");
-    errorCounter++;
+		PN5180DEBUG("transceiveCommand timeout (receive/3)");
 		return false;
 	};
   }; // wait until busy is high
@@ -647,8 +692,7 @@ bool PN5180::transceiveCommand(uint8_t *sendBuffer, size_t sendBufferLen, uint8_
   startedWaiting = millis();
   while (LOW != digitalRead_alt(PN5180_BUSY)) {
     if (millis() - startedWaiting > commandTimeout) {
-		transceiveDebug("transceiveCommand timeout (receive/5)");
-    errorCounter++;
+		PN5180DEBUG("transceiveCommand timeout (receive/5)");
 		return false;
 	};
   }; // wait until busy is low
@@ -669,20 +713,28 @@ bool PN5180::transceiveCommand(uint8_t *sendBuffer, size_t sendBufferLen, uint8_
  * Reset NFC device
  */
 void PN5180::reset() {
+  // while(digitalRead_alt(PN5180_BUSY)){
+  //   Serial.println("resetting");
+  //   digitalWrite_alt(PN5180_RST, LOW);  // at least 10us required
+  //   delayMicroseconds(100);
+  //   digitalWrite_alt(PN5180_RST, HIGH); // 2ms to ramp up required
+  //   delayMicroseconds(3000);
+  // }
   digitalWrite_alt(PN5180_RST, LOW);  // at least 10us required
-  delayMicroseconds(50);
+  delayMicroseconds(20);
   digitalWrite_alt(PN5180_RST, HIGH); // 2ms to ramp up required
   delayMicroseconds(2500);
+  
 
   unsigned long startedWaiting = millis();
   while (0 == (IDLE_IRQ_STAT & getIRQStatus())) {
 	// wait for system to start up (with timeout)
-    if (millis() - startedWaiting > commandTimeout+5) {
-      PN5180DEBUG(F("reset failed (timeout)!!!\n"));
+    if (millis() - startedWaiting > commandTimeout) {
+      Serial.println(F("reset failed (timeout)!!!\n"));
       // try again with larger time
       digitalWrite_alt(PN5180_RST, LOW);  
-      delay(10);
-      digitalWrite_alt(PN5180_RST, HIGH);
+      delay(25);
+      digitalWrite_alt(PN5180_RST, HIGH); 
       delay(50);
       return;
 	  }
@@ -729,7 +781,7 @@ PN5180TransceiveStat PN5180::getTransceiveState() {
 #ifdef DEBUG
     showIRQStatus(getIRQStatus());
 #endif
-    PN5180DEBUG(F("ERROR reading RF_STATUS register.\n"));
+    Serial.println(F("ERROR reading RF_STATUS register.\n"));
     return PN5180TransceiveStat(0);
   }
 
@@ -752,54 +804,47 @@ PN5180TransceiveStat PN5180::getTransceiveState() {
   return PN5180TransceiveStat(state);
 }
 
-void PN5180::digitalWrite_alt(uint8_t pin, bool state){
-  uint32_t timer = micros();
-  if(I2C_Mode) mcp->digitalWrite(pin, state); 
-  else digitalWrite(pin, state);
-  int writeTime = micros() - timer;
-  timeCounter += writeTime - 12;
-  // Serial.print(pin);
-  // Serial.print(" write time in micros -- ");
-  // Serial.println(writeTime);
-}
-
 bool PN5180::digitalRead_alt(uint8_t pin){
   if(I2C_Mode){
-    uint32_t timer = micros();
-    bool read = mcp->digitalRead(pin);
-    int readTime = micros() - timer;
-    // Serial.print(pin);
-    // Serial.print(" read time in micros -- ");
-    // Serial.println(readTime);
-    timeCounter += readTime - 35;
     return mcp->digitalRead(pin);
   }
-  else return digitalRead(pin);
+  else{
+    return digitalRead(pin);
+  }
+}
+
+void PN5180::digitalWrite_alt(uint8_t pin, bool state){
+  if(I2C_Mode){
+    mcp->digitalWrite(pin, state);
+  }
+  else{
+    digitalWrite(pin, state);
+  }
 }
 
 void PN5180::showIRQStatus(uint32_t irqStatus) {
-    Serial.print(F("IRQ-Status 0x"));
-    Serial.print(irqStatus, HEX);
-    Serial.print(": [ ");
-    if (irqStatus & (1<< 0)) Serial.print(F("RQ "));
-    if (irqStatus & (1<< 1)) Serial.print(F("TX "));
-    if (irqStatus & (1<< 2)) Serial.print(F("IDLE "));
-    if (irqStatus & (1<< 3)) Serial.print(F("MODE_DETECTED "));
-    if (irqStatus & (1<< 4)) Serial.print(F("CARD_ACTIVATED "));
-    if (irqStatus & (1<< 5)) Serial.print(F("STATE_CHANGE "));
-    if (irqStatus & (1<< 6)) Serial.print(F("RFOFF_DET "));
-    if (irqStatus & (1<< 7)) Serial.print(F("RFON_DET "));
-    if (irqStatus & (1<< 8)) Serial.print(F("TX_RFOFF "));
-    if (irqStatus & (1<< 9)) Serial.print(F("TX_RFON "));
-    if (irqStatus & (1<<10)) Serial.print(F("RF_ACTIVE_ERROR "));
-    if (irqStatus & (1<<11)) Serial.print(F("TIMER0 "));
-    if (irqStatus & (1<<12)) Serial.print(F("TIMER1 "));
-    if (irqStatus & (1<<13)) Serial.print(F("TIMER2 "));
-    if (irqStatus & (1<<14)) Serial.print(F("RX_SOF_DET "));
-    if (irqStatus & (1<<15)) Serial.print(F("RX_SC_DET "));
-    if (irqStatus & (1<<16)) Serial.print(F("TEMPSENS_ERROR "));
-    if (irqStatus & (1<<17)) Serial.print(F("GENERAL_ERROR "));
-    if (irqStatus & (1<<18)) Serial.print(F("HV_ERROR "));
-    if (irqStatus & (1<<19)) Serial.print(F("LPCD "));
-    Serial.println("]");
-  }
+  Serial.print(F("IRQ-Status 0x"));
+  Serial.print(irqStatus, HEX);
+  Serial.print(": [ ");
+  if (irqStatus & (1<< 0)) Serial.print(F("RQ "));
+  if (irqStatus & (1<< 1)) Serial.print(F("TX "));
+  if (irqStatus & (1<< 2)) Serial.print(F("IDLE "));
+  if (irqStatus & (1<< 3)) Serial.print(F("MODE_DETECTED "));
+  if (irqStatus & (1<< 4)) Serial.print(F("CARD_ACTIVATED "));
+  if (irqStatus & (1<< 5)) Serial.print(F("STATE_CHANGE "));
+  if (irqStatus & (1<< 6)) Serial.print(F("RFOFF_DET "));
+  if (irqStatus & (1<< 7)) Serial.print(F("RFON_DET "));
+  if (irqStatus & (1<< 8)) Serial.print(F("TX_RFOFF "));
+  if (irqStatus & (1<< 9)) Serial.print(F("TX_RFON "));
+  if (irqStatus & (1<<10)) Serial.print(F("RF_ACTIVE_ERROR "));
+  if (irqStatus & (1<<11)) Serial.print(F("TIMER0 "));
+  if (irqStatus & (1<<12)) Serial.print(F("TIMER1 "));
+  if (irqStatus & (1<<13)) Serial.print(F("TIMER2 "));
+  if (irqStatus & (1<<14)) Serial.print(F("RX_SOF_DET "));
+  if (irqStatus & (1<<15)) Serial.print(F("RX_SC_DET "));
+  if (irqStatus & (1<<16)) Serial.print(F("TEMPSENS_ERROR "));
+  if (irqStatus & (1<<17)) Serial.print(F("GENERAL_ERROR "));
+  if (irqStatus & (1<<18)) Serial.print(F("HV_ERROR "));
+  if (irqStatus & (1<<19)) Serial.print(F("LPCD "));
+  Serial.println("]");
+}

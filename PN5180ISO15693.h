@@ -47,11 +47,9 @@ private:
 public:
   ISO15693ErrorCode getInventory(uint8_t *uid);
   ISO15693ErrorCode getInventoryMultiple(uint8_t *uid, uint8_t maxTags, uint8_t *numCard);
-
   ISO15693ErrorCode readSingleBlock(uint8_t *uid, uint8_t blockNo, uint8_t *blockData, uint8_t blockSize);
   ISO15693ErrorCode writeSingleBlock(uint8_t *uid, uint8_t blockNo, uint8_t *blockData, uint8_t blockSize);
   ISO15693ErrorCode readMultipleBlock(uint8_t *uid, uint8_t blockNo, uint8_t numBlock, uint8_t *blockData, uint8_t blockSize);
-
   ISO15693ErrorCode getSystemInfo(uint8_t *uid, uint8_t *blockSize, uint8_t *numBlocks);
    
   // ICODE SLIX2 specific commands, see https://www.nxp.com/docs/en/data-sheet/SL2S2602.pdf
@@ -66,7 +64,7 @@ public:
    */
 public:   
   bool setupRF();
-  const char *strerror(ISO15693ErrorCode errno);
+  const __FlashStringHelper *strerror(ISO15693ErrorCode errno);
     
 };
 

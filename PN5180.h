@@ -20,7 +20,8 @@
 #define PN5180_H
 
 #include <SPI.h>
-#include <Adafruit_MCP23X08.h>
+#include "Adafruit_MCP23X08.h"
+#include "LibPrintf.h"
 
 // PN5180 Registers
 #define SYSTEM_CONFIG       (0x00)
@@ -34,12 +35,12 @@
 #define CRC_RX_CONFIG       (0x12)
 #define RX_STATUS           (0x13)
 #define TX_WAIT_CONFIG	    (0x17)
-#define TX_CONFIG			(0x18)
+#define TX_CONFIG			      (0x18)
 #define CRC_TX_CONFIG       (0x19)
 #define RF_STATUS           (0x1d)
 #define SYSTEM_STATUS       (0x24)
 #define TEMP_CONTROL        (0x25)
-#define AGC_REF_CONFIG		(0x26)
+#define AGC_REF_CONFIG		  (0x26)
 
 
 // PN5180 EEPROM Addresses
@@ -79,24 +80,20 @@ private:
   uint8_t PN5180_RST;
   SPIClass& PN5180_SPI;
   Adafruit_MCP23X08 *mcp;
-  uint8_t I2C_Address;
-  
-
+  bool I2C_Mode = false;
 
   SPISettings SPI_SETTINGS;
-  static uint8_t readBuffer[508];
-  bool I2C_Mode = false;
+  uint8_t readBuffer[508];
+  static uint16_t ID_Incrementor;
 
 public:
   PN5180(uint8_t SSpin, uint8_t BUSYpin, uint8_t RSTpin, SPIClass& spi=SPI);
-  PN5180(uint8_t _nss, Adafruit_MCP23X08 *_mcp, uint8_t _address, SPIClass& _spi);
+  PN5180(uint8_t _nss, Adafruit_MCP23X08 *_mcp, SPIClass& _spi);
   void begin();
   void end();
-  void digitalWrite_alt(uint8_t pin, bool state);
-  bool digitalRead_alt(uint8_t pin);
-  void showIRQStatus(uint32_t irqStatus);
-  uint32_t timeCounter;
-  uint16_t errorCounter = 0;
+  void disable();
+  bool isBusy();
+  uint16_t readerID;  
 
   /*
    * PN5180 direct commands with host interface
@@ -121,7 +118,7 @@ public:
   bool sendData(uint8_t *data, int len, uint8_t validBits = 0);
   /* cmd 0x0a */
   uint8_t * readData(int len);
-  bool readData(int len, uint8_t *buffer);
+  bool readData(uint8_t len, uint8_t *buffer);
   /* prepare LPCD registers */
   bool prepareLPCD();
   /* cmd 0x0B */
@@ -133,6 +130,8 @@ public:
   bool setRF_on();
   /* cmd 0x17 */
   bool setRF_off();
+  bool digitalRead_alt(uint8_t pin);
+  void digitalWrite_alt(uint8_t pin, bool state);
 
   /*
    * Helper functions
@@ -140,16 +139,17 @@ public:
 public:
   void reset();
 
-  uint16_t commandTimeout = 10;
+  uint8_t commandTimeout = 25;
   uint32_t getIRQStatus();
   bool clearIRQStatus(uint32_t irqMask);
 
   PN5180TransceiveStat getTransceiveState();
+  void showIRQStatus(uint32_t irqStatus);
 
   /*
    * Private methods, called within an SPI transaction
    */
-public:
+private:
   bool transceiveCommand(uint8_t *sendBuffer, size_t sendBufferLen, uint8_t *recvBuffer = 0, size_t recvBufferLen = 0);
 
 };

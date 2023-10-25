@@ -21,37 +21,40 @@
 
 #include "PN5180.h"
 
+enum ISO14443_UPDATE_STATE{
+	ISO14443_NOT_UPDATED,
+	ISO14443_UPDATED,
+	ISO14443_ERROR
+};
 
 class PN5180ISO14443 : public PN5180 {
 
 public:
   PN5180ISO14443(uint8_t SSpin, uint8_t BUSYpin, uint8_t RSTpin, SPIClass& spi=SPI);
-  PN5180ISO14443(uint8_t _nss, Adafruit_MCP23X08 *_mcp, uint8_t _address, SPIClass& _spi);
-public:
+  PN5180ISO14443(uint8_t _nss, Adafruit_MCP23X08 *_mcp, SPIClass& _spi);
+private:
   uint16_t rxBytesReceived();
   uint32_t GetNumberOfBytesReceivedAndValidBits();
+  uint8_t tagData[7];
+  uint8_t lastTagLength = 4;
 public:
   // Mifare TypeA
+  ISO14443_UPDATE_STATE update();
+  uint8_t* getTagData();
+  void printUID();
   int8_t activateTypeA(uint8_t *buffer, uint8_t kind);
-  int8_t hackyRead(uint8_t *buffer); // sorta the same as activateTypeA
-  int8_t hackyRead(); // same as above but uses rawTagData as buffer
-  bool update();
   bool mifareBlockRead(uint8_t blockno,uint8_t *buffer);
   uint8_t mifareBlockWrite16(uint8_t blockno, uint8_t *buffer);
   bool mifareHalt();
+  bool errored();
   /*
-  
    * Helper functions
    */
 public:   
   bool setupRF();
   int8_t readCardSerial(uint8_t *buffer);    
   bool isCardPresent();
-  uint8_t *getTagData();
-private:
-  uint8_t rawTagData[4];
-  uint8_t tagData[4];
-  
+  bool hadError = false;
 };
 
 #endif /* PN5180ISO14443_H */
