@@ -509,8 +509,10 @@ bool PN5180::setRF_on() {
   PN5180_SPI.endTransaction();
   if(!success){
     Serial.println("setrf_on failed?");
-    return false;
+    reset();
+    // return false;
   }
+  // reset();
   unsigned long startedWaiting = millis();
   while (0 == (TX_RFON_IRQ_STAT & getIRQStatus())) {   // wait for RF field to set up (max 500ms)
     showIRQStatus(getIRQStatus());
@@ -639,8 +641,8 @@ for(int i = 0; i < sendBufferLen; i++){
   unsigned long startedWaiting = millis();
   while (LOW != digitalRead_alt(PN5180_BUSY)) {
     if (millis() - startedWaiting > commandTimeout) {
-		Serial.println("transceiveCommand timeout (send/0)");
-    printSendAndReceiveBuffers(sendBufferCopy, sendBufferLen, recvBufferCopy, recvBufferLen);
+		// Serial.println("transceiveCommand timeout (send/0)");
+    // printSendAndReceiveBuffers(sendBufferCopy, sendBufferLen, recvBufferCopy, recvBufferLen);
 		return false;
 	};
   }; // wait until busy is low
@@ -652,8 +654,8 @@ for(int i = 0; i < sendBufferLen; i++){
   startedWaiting = millis();
   while (HIGH != digitalRead_alt(PN5180_BUSY)) {
     if (millis() - startedWaiting > commandTimeout) {
-		Serial.println("transceiveCommand timeout (send/3)");
-    printSendAndReceiveBuffers(sendBufferCopy, sendBufferLen, recvBufferCopy, recvBufferLen);
+		// Serial.println("transceiveCommand timeout (send/3)");
+    // printSendAndReceiveBuffers(sendBufferCopy, sendBufferLen, recvBufferCopy, recvBufferLen);
 		return false;
 	}
   }; // wait until busy is high
@@ -663,8 +665,8 @@ for(int i = 0; i < sendBufferLen; i++){
   startedWaiting = millis();
   while (LOW != digitalRead_alt(PN5180_BUSY)) {
     if (millis() - startedWaiting > commandTimeout) {
-		Serial.println("transceiveCommand timeout (send/5)");
-    printSendAndReceiveBuffers(sendBufferCopy, sendBufferLen, recvBufferCopy, recvBufferLen);
+		// Serial.println("transceiveCommand timeout (send/5)");
+    // printSendAndReceiveBuffers(sendBufferCopy, sendBufferLen, recvBufferCopy, recvBufferLen);
 		return false;
 	};
   }; // wait until busy is low
@@ -713,24 +715,27 @@ for(int i = 0; i < sendBufferLen; i++){
  * Reset NFC device
  */
 void PN5180::reset() {
-  // while(digitalRead_alt(PN5180_BUSY)){
-  //   Serial.println("resetting");
-  //   digitalWrite_alt(PN5180_RST, LOW);  // at least 10us required
-  //   delayMicroseconds(100);
-  //   digitalWrite_alt(PN5180_RST, HIGH); // 2ms to ramp up required
-  //   delayMicroseconds(3000);
-  // }
+  uint32_t resetWhileLoopTimeout= millis();
+  while(digitalRead_alt(PN5180_BUSY)){
+    Serial.println("resetting");
+    digitalWrite_alt(PN5180_RST, LOW);  // at least 10us required
+    delayMicroseconds(200);
+    digitalWrite_alt(PN5180_RST, HIGH); // 2ms to ramp up required
+    delayMicroseconds(3000);
+    if(millis() - resetWhileLoopTimeout > 50) break;
+  }
   digitalWrite_alt(PN5180_RST, LOW);  // at least 10us required
-  delayMicroseconds(20);
+  delayMicroseconds(200);
   digitalWrite_alt(PN5180_RST, HIGH); // 2ms to ramp up required
-  delayMicroseconds(2500);
+  delayMicroseconds(3500);
   
 
   unsigned long startedWaiting = millis();
   while (0 == (IDLE_IRQ_STAT & getIRQStatus())) {
 	// wait for system to start up (with timeout)
-    if (millis() - startedWaiting > commandTimeout) {
-      Serial.println(F("reset failed (timeout)!!!\n"));
+    if (millis() - startedWaiting > 100) {
+      printf("reset failed (timeout) for reader %i\n", readerID);
+      // Serial.println(F("reset failed (timeout)!!!\n"));
       // try again with larger time
       digitalWrite_alt(PN5180_RST, LOW);  
       delay(25);
@@ -806,6 +811,7 @@ PN5180TransceiveStat PN5180::getTransceiveState() {
 
 bool PN5180::digitalRead_alt(uint8_t pin){
   if(I2C_Mode){
+    delayMicroseconds(10);
     return mcp->digitalRead(pin);
   }
   else{
@@ -815,6 +821,7 @@ bool PN5180::digitalRead_alt(uint8_t pin){
 
 void PN5180::digitalWrite_alt(uint8_t pin, bool state){
   if(I2C_Mode){
+    delayMicroseconds(10);
     mcp->digitalWrite(pin, state);
   }
   else{

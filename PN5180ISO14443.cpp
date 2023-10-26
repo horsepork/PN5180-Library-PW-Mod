@@ -48,6 +48,7 @@ ISO14443_UPDATE_STATE PN5180ISO14443::update(){ // return true if updated
 	for(int i = 0; i < 7; i++){
 		prevTagData[i] = tagData[i];
 	}
+	
 	// setupRF();
 	int uidLength = readCardSerial(tagData);
 	// printf("UID length -- %i\n", uidLength);
@@ -55,6 +56,8 @@ ISO14443_UPDATE_STATE PN5180ISO14443::update(){ // return true if updated
 		printf("reader %i uid length -- %i\n", readerID, uidLength);
 		newState = ISO14443_ERROR;	
 		hadError = true;
+		// delay(10);
+		// setRF_off();
 		return newState;
 	}
 	setRF_off();
@@ -231,7 +234,7 @@ int8_t PN5180ISO14443::activateTypeA(uint8_t *buffer, uint8_t kind) {
 	// delay(2);
 	unsigned long startedWaiting = millis();
 	if(getTransceiveState() != PN5180_TS_WaitTransmit){
-		return -10;
+		return -10; // means no tag, I think
 	}
 	// while (PN5180_TS_WaitTransmit != getTransceiveState()) {   
 	// 	if (millis() - startedWaiting > 5) {
@@ -262,7 +265,7 @@ int8_t PN5180ISO14443::activateTypeA(uint8_t *buffer, uint8_t kind) {
 	printTime("rxBytesReceived");
 	if (numBytes != 5) {
 		Serial.println(F("*** ERROR: Read 5 bytes sak failed!\n"));
-		return -2;
+		return -47;
 	};
 	// read 5 bytes sak, we will store at offset 2 for later usage
 	if (!readData(5, cmd+2)) {
