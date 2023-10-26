@@ -42,7 +42,7 @@ bool PN5180ISO14443::errored(){
 	return false;
 }
 
-ISO14443_UPDATE_STATE PN5180ISO14443::update(){ // return true if updated
+ISO14443_UPDATE_STATE PN5180ISO14443::update(){
 	ISO14443_UPDATE_STATE newState = ISO14443_NOT_UPDATED;
 	uint8_t prevTagData[7];
 	for(int i = 0; i < 7; i++){
@@ -295,6 +295,7 @@ int8_t PN5180ISO14443::activateTypeA(uint8_t *buffer, uint8_t kind) {
 		// no remaining bytes, we have a 4 byte UID
 		return 4;
 	}
+	delay(1);
 	printTime("anti collision 2");
 	//Read 1 byte SAK into buffer[2]
 	if (!readData(1, buffer+2)) 
@@ -419,8 +420,12 @@ int8_t PN5180ISO14443::readCardSerial(uint8_t *buffer) {
     for (int i = 0; i < 10; i++) response[i] = 0;
 	// try to activate Type A until response or timeout
 	uidLength = activateTypeA(response, 0);
-
-	
+	// printf("uid length from activateTypeA -- %i\n", uidLength);
+	// for(int i = 0; i < 10; i++){
+	// 	Serial.print(response[i]);
+	// 	Serial.print(" ");
+	// }
+	// Serial.println();
 	if (uidLength <= 0)
 	  return uidLength;
 	// UID length must be at least 4 bytes

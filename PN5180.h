@@ -93,6 +93,7 @@ public:
   void end();
   void disable();
   bool isBusy();
+  void hardReset();
   uint16_t readerID;  
 
   /*

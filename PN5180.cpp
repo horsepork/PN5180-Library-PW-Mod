@@ -79,7 +79,7 @@ void PN5180::begin() {
 
   digitalWrite_alt(PN5180_NSS, HIGH); // disable
   // digitalWrite_alt(PN5180_RST, HIGH); // no reset
-  reset();
+  hardReset();
 
   PN5180_SPI.begin();
   PN5180DEBUG(F("SPI pinout: "));
@@ -854,4 +854,12 @@ void PN5180::showIRQStatus(uint32_t irqStatus) {
   if (irqStatus & (1<<18)) Serial.print(F("HV_ERROR "));
   if (irqStatus & (1<<19)) Serial.print(F("LPCD "));
   Serial.println("]");
+}
+
+void PN5180::hardReset(){
+  digitalWrite_alt(PN5180_NSS, HIGH);
+  delay(2);
+  digitalWrite_alt(PN5180_RST, LOW);
+  delay(1000);
+  reset();
 }
